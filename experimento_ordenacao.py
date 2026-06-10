@@ -12,7 +12,7 @@ import time
 import random
 import math
 import sys
-import signal
+import threading
 import matplotlib
 matplotlib.use('Agg')   # troca pra 'TkAgg' se quiser janela interativa
 import matplotlib.pyplot as plt
@@ -24,29 +24,34 @@ from merge_sort import merge_sort
 from quick_sort import quick_sort
 
 # ─────────────────────────────────────────────
-# TIMEOUT
+# TIMEOUT (funciona no Windows, Linux e macOS)
 # ─────────────────────────────────────────────
 LIMITE_SEGUNDOS = 300  # 5 minutos
 
-class TimeoutError(Exception):
-    pass
-
-def _timeout_handler(signum, frame):
-    raise TimeoutError()
-
 def rodar_com_timeout(func, arr, limite=LIMITE_SEGUNDOS):
-    """Executa func(arr) com limite de tempo. Retorna (tempo, moves) ou None se N/C."""
-    signal.signal(signal.SIGABRT, _timeout_handler)
-    signal.alarm(limite)
-    try:
-        t0 = time.perf_counter()
-        _, moves = func(arr[:])
-        elapsed = time.perf_counter() - t0
-        signal.alarm(0)
-        return elapsed, moves
-    except TimeoutError:
-        signal.alarm(0)
+    """Executa func(arr) em uma thread separada com limite de tempo.
+    Retorna (tempo, moves) se concluir dentro do limite, ou None se N/C."""
+    resultado = [None]
+    excecao   = [None]
+
+    def target():
+        try:
+            t0 = time.perf_counter()
+            _, moves = func(arr[:])
+            resultado[0] = (time.perf_counter() - t0, moves)
+        except Exception as e:
+            excecao[0] = e
+
+    t = threading.Thread(target=target, daemon=True)
+    t.start()
+    t.join(timeout=limite)
+
+    if t.is_alive():
+        # Thread ainda rodando — estourou o limite
         return None
+    if excecao[0]:
+        raise excecao[0]
+    return resultado[0]
 
 # ─────────────────────────────────────────────
 # EXPERIMENTO
